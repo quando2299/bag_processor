@@ -55,6 +55,11 @@ RUN mkdir -p build && cd build && \
     /bin/bash -c "source /opt/ros/melodic/setup.bash && \
     cp ../CMakeLists.txt . && \
     cp ../rosbag_analyzed.cpp . && \
+    cp ../sei_generator.h . && \
+    cp ../sei_generator.cpp . && \
+    cp ../h264_timestamp_injector.cpp . && \
+    cp ../h264_timestamp_reader.cpp . && \
+    cp ../convert_to_length_prefixed.cpp . && \
     cmake . \
         -DCMAKE_CXX_STANDARD=14 \
         -DCMAKE_CXX_FLAGS='-pthread -std=c++14' \
@@ -62,6 +67,10 @@ RUN mkdir -p build && cd build && \
         -DBoost_USE_STATIC_LIBS=OFF \
         -DBoost_USE_MULTITHREADED=ON && \
     make VERBOSE=1"
+
+# Build the convert_to_length_prefixed tool
+RUN cd /workspace && \
+    g++ -std=c++14 convert_to_length_prefixed.cpp sei_generator.cpp -o convert_to_length_prefixed
 
 # Set entrypoint
 WORKDIR /workspace/build

@@ -24,6 +24,8 @@ class H264ByteStream:
     def reduce_nalus_to_samples(samples: List[List[bytes]], current: bytes) -> List[List[bytes]]:
         last_nalus = samples[-1]
         samples[-1] = last_nalus + [current]
+        # Start a new sample after frame NALUs (1=non-IDR, 5=IDR)
+        # SEI (6), SPS (7), PPS (8) will be included with the next frame
         if H264ByteStream.nalu_type(current) in [1, 5]:
             samples.append([])
         return samples
@@ -56,24 +58,39 @@ def generate(input_file: str, output_dir: str, max_samples: Optional[int], fps: 
                 os.remove(file)
     else:
         os.makedirs(output_dir, exist_ok=True)
-    video_stream_file = "_video_stream.h264"
-    if os.path.isfile(video_stream_file):
-        os.remove(video_stream_file)
+    # Check if input is already H264 (not MP4)
+    if input_file.endswith('.h264'):
+        # Input is already H264, use it directly
+        print("Input is H264, using directly without ffmpeg conversion")
+        data = H264ByteStream(input_file)
+    else:
+        # Input is MP4, convert to H264 first
+        video_stream_file = "_video_stream.h264"
+        if os.path.isfile(video_stream_file):
+            os.remove(video_stream_file)
 
-    fps_line = "" if fps is None else "-filter:v fps=fps={} ".format(30)
-    command = 'ffmpeg -i {} -an -vcodec libx264 -preset slow -profile baseline {}{}'.format(input_file, fps_line,
-                                                                                            video_stream_file)
-    os.system(command)
+        fps_line = "" if fps is None else "-filter:v fps=fps={} ".format(fps)
+        command = 'ffmpeg -i {} -an -vcodec libx264 -preset slow -profile baseline {}{}'.format(input_file, fps_line,
+                                                                                                video_stream_file)
+        os.system(command)
 
-    data = H264ByteStream(video_stream_file)
+        data = H264ByteStream(video_stream_file)
     index = 0
     for sample in data.samples[:max_samples]:
+        # Debug: Check NAL unit types in this sample
+        # nal_types = [H264ByteStream.nalu_type(nalu) for nalu in sample]
+        # if 6 in nal_types:  # SEI NAL unit
+        #     print("Sample {} contains SEI (NAL types: {})".format(index, nal_types))
+
         name = "{}sample-{}.h264".format(output_dir, index)
         index += 1
         with open(name, 'wb') as file:
             merged_sample = H264ByteStream.merge_sample(sample)
             file.write(merged_sample)
-    os.remove(video_stream_file)
+
+    # Only remove temp file if it was created
+    if not input_file.endswith('.h264') and 'video_stream_file' in locals():
+        os.remove(video_stream_file)
 
 
 def main(argv):

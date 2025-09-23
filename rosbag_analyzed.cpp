@@ -39,6 +39,7 @@ class BagProcessor {
 private:
     std::string bag_path_;
     std::string output_dir_;
+    std::string timestamp_;
     
     struct TopicInfo {
         std::string topic_name;
@@ -54,8 +55,11 @@ private:
         std::cout << "🎬 Converting images to H264 video..." << std::endl;
         std::cout << "  Input: " << images_dir << std::endl;
         std::cout << "  Output: " << output_video_path << std::endl;
-        
-        // ffmpeg command to convert images to H264 MP4 at 30fps
+
+        // First, create a raw H264 stream without container
+        std::string h264_raw_path = output_video_path + ".h264";
+
+        // ffmpeg command to convert images to raw H264 stream
         std::ostringstream cmd;
         cmd << "ffmpeg -y "  // -y to overwrite output file
             << "-framerate 30 "  // Input framerate
@@ -64,15 +68,83 @@ private:
             << "-vf 'scale=trunc(iw/2)*2:trunc(ih/2)*2' "  // Ensure even dimensions
             << "-c:v libx264 "  // H264 codec
             << "-pix_fmt yuv420p "  // Pixel format
-            << "-r 30 "  // Output framerate  
-            << "'" << output_video_path << "'";
-        
+            << "-r 30 "  // Output framerate
+            << "-bsf:v h264_mp4toannexb "  // Convert to Annex B format
+            << "-f h264 "  // Raw H264 output
+            << "'" << h264_raw_path << "'";
+
         std::cout << "Running: " << cmd.str() << std::endl;
-        
+
         int result = system(cmd.str().c_str());
-        
+
         if (result == 0) {
-            std::cout << "✅ Video conversion successful: " << output_video_path << std::endl;
+            std::cout << "✅ H264 stream creation successful: " << h264_raw_path << std::endl;
+
+            // Now inject timestamps into the H264 stream
+            std::string h264_timestamped_path = output_video_path + ".timestamped.h264";
+            std::cout << "💉 Injecting timestamps into H264 stream..." << std::endl;
+
+            std::ostringstream inject_cmd;
+            inject_cmd << "./h264_timestamp_injector "
+                      << "'" << h264_raw_path << "' "
+                      << "'" << h264_timestamped_path << "' "
+                      << "'" << images_dir << "'";
+
+            int inject_result = system(inject_cmd.str().c_str());
+
+            if (inject_result == 0) {
+                std::cout << "✅ Timestamp injection successful: " << h264_timestamped_path << std::endl;
+
+                // Package the timestamped H264 stream into MP4 container
+                std::ostringstream package_cmd;
+                package_cmd << "ffmpeg -y "
+                           << "-f h264 "
+                           << "-i '" << h264_timestamped_path << "' "
+                           << "-c:v copy "
+                           << "'" << output_video_path << "'";
+
+                int package_result = system(package_cmd.str().c_str());
+
+                if (package_result == 0) {
+                    std::cout << "✅ Final MP4 packaging successful: " << output_video_path << std::endl;
+
+                    // Generate H264 files for streaming
+                    std::string h264_output_dir = "h264/" + timestamp_ + "/" + boost::filesystem::path(images_dir).filename().string() + "_30fps";
+                    if (generateH264FilesForStreaming(h264_timestamped_path, h264_output_dir)) {
+                        std::cout << "✅ H264 streaming files generated: " << h264_output_dir << std::endl;
+                    } else {
+                        std::cout << "⚠️  H264 streaming file generation failed" << std::endl;
+                    }
+
+                    // Clean up intermediate files
+                    std::remove(h264_raw_path.c_str());
+                    std::remove(h264_timestamped_path.c_str());
+                } else {
+                    std::cout << "⚠️  MP4 packaging failed, keeping raw H264 files" << std::endl;
+                }
+            } else {
+                std::cout << "⚠️  Timestamp injection failed, creating standard MP4 without timestamps" << std::endl;
+
+                // Fall back to creating MP4 without timestamps
+                std::ostringstream fallback_cmd;
+                fallback_cmd << "ffmpeg -y "
+                            << "-f h264 "
+                            << "-i '" << h264_raw_path << "' "
+                            << "-c:v copy "
+                            << "'" << output_video_path << "'";
+                int fallback_result = system(fallback_cmd.str().c_str());
+
+                if (fallback_result == 0) {
+                    // Still generate H264 files for streaming (without timestamps)
+                    std::string h264_output_dir = "h264/" + timestamp_ + "/" + boost::filesystem::path(images_dir).filename().string() + "_30fps";
+                    if (generateH264FilesForStreaming(h264_raw_path, h264_output_dir)) {
+                        std::cout << "✅ H264 streaming files generated (without timestamps): " << h264_output_dir << std::endl;
+                    }
+                }
+
+                std::remove(h264_raw_path.c_str());
+            }
+
             return true;
         } else {
             std::cout << "❌ Video conversion failed (exit code: " << result << ")" << std::endl;
@@ -90,9 +162,36 @@ private:
         boost::filesystem::create_directories(path);
     }
 
+    bool generateH264FilesForStreaming(const std::string& timestamped_h264_path, const std::string& output_dir) {
+        std::cout << "🎬 Generating H264 files for streaming..." << std::endl;
+        std::cout << "  Input: " << timestamped_h264_path << std::endl;
+        std::cout << "  Output: " << output_dir << std::endl;
+
+        // Create output directory
+        create_directories(output_dir);
+
+        // Use the existing generate_h264.py script from the workspace directory
+        std::ostringstream cmd;
+        cmd << "python3 /workspace/generate_h264.py "
+            << "-i '" << timestamped_h264_path << "' "
+            << "-o '" << output_dir << "/'";
+
+        std::cout << "Running: " << cmd.str() << std::endl;
+
+        int result = system(cmd.str().c_str());
+
+        if (result == 0) {
+            std::cout << "✅ H264 streaming files generated successfully" << std::endl;
+            return true;
+        } else {
+            std::cout << "❌ H264 streaming file generation failed (exit code: " << result << ")" << std::endl;
+            return false;
+        }
+    }
+
 public:
-    BagProcessor(const std::string& bag_path, const std::string& output_dir = "extracted_images") 
-        : bag_path_(bag_path), output_dir_(output_dir) {}
+    BagProcessor(const std::string& bag_path, const std::string& output_dir = "extracted_images", const std::string& timestamp = "")
+        : bag_path_(bag_path), output_dir_(output_dir), timestamp_(timestamp) {}
 
     bool analyzeBag() {
         std::cout << "=== ANALYZING BAG FILE ===" << std::endl;
@@ -128,23 +227,11 @@ public:
 
             double duration = (end_time - start_time).toSec();
             
-            std::cout << "Duration: " << std::fixed << std::setprecision(2) << duration << " seconds" << std::endl;
-            std::cout << "Message count: " << total_messages << std::endl;
-            std::cout << "Topics: " << topic_counts.size() << std::endl << std::endl;
-
-            // Display topic information
-            std::cout << "Topics Information:" << std::endl;
-            std::cout << "----------------------------------------" << std::endl;
-            
             for (const auto& topic_pair : topic_counts) {
                 const std::string& topic_name = topic_pair.first;
                 int count = topic_pair.second;
                 const std::string& msg_type = topic_types[topic_name];
                 
-                std::cout << "Topic: " << topic_name << std::endl;
-                std::cout << "  Type: " << msg_type << std::endl;
-                std::cout << "  Count: " << count << std::endl << std::endl;
-
                 // Check if this is an image topic
                 if (msg_type.find("Image") != std::string::npos || 
                     topic_name.find("image") != std::string::npos) {
@@ -160,9 +247,9 @@ public:
             // Display found image topics
             if (!image_topics_.empty()) {
                 std::cout << "Found " << image_topics_.size() << " image topics:" << std::endl;
-                for (const auto& topic : image_topics_) {
-                    std::cout << "  - " << topic.topic_name << ": " << topic.msg_count << " images" << std::endl;
-                }
+                // for (const auto& topic : image_topics_) {
+                //     std::cout << "  - " << topic.topic_name << ": " << topic.msg_count << " images" << std::endl;
+                // }
             } else {
                 std::cout << "No image topics found!" << std::endl;
                 bag.close();
@@ -180,8 +267,6 @@ public:
     }
 
     bool createOutputDirectories() {
-        std::cout << "=== CREATING OUTPUT DIRECTORIES ===" << std::endl;
-        
         try {
             // Create main output directory
             create_directories(output_dir_);
@@ -203,8 +288,6 @@ public:
                 
                 topic_directories_[topic.topic_name] = topic_dir;
                 extraction_counts_[topic.topic_name] = 0;
-                
-                std::cout << "Created directory: " << topic_dir << std::endl;
             }
             
             std::cout << std::endl;
@@ -217,9 +300,6 @@ public:
     }
 
     bool extractImages() {
-        std::cout << "=== EXTRACTING IMAGES ===" << std::endl;
-        std::cout << "Extracting ALL images from bag file..." << std::endl;
-        
         try {
             rosbag::Bag bag;
             bag.open(bag_path_, rosbag::bagmode::Read);
@@ -290,11 +370,11 @@ public:
                             if (cv::imwrite(filepath, cv_ptr->image)) {
                                 success_counts[topic_name]++;
                                 
-                                // Progress update every 50 images
-                                if (success_counts[topic_name] % 50 == 0) {
-                                    std::cout << "  " << topic_name << ": saved " 
-                                             << success_counts[topic_name] << " images" << std::endl;
-                                }
+                                // // Progress update every 50 images
+                                // if (success_counts[topic_name] % 50 == 0) {
+                                //     std::cout << "  " << topic_name << ": saved " 
+                                //              << success_counts[topic_name] << " images" << std::endl;
+                                // }
                             } else {
                                 std::cerr << "Failed to save image: " << filepath << std::endl;
                             }
@@ -445,7 +525,7 @@ int main(int argc, char** argv) {
     }
 
     // Create and run bag processor
-    BagProcessor processor(bag_file, output_dir);
+    BagProcessor processor(bag_file, output_dir, timestamp);
     
     if (!processor.process()) {
         std::cerr << "Bag processing failed!" << std::endl;
