@@ -170,7 +170,7 @@ private:
         // Create output directory
         create_directories(output_dir);
 
-        // Use the existing generate_h264.py script from the workspace directory
+        // Step 1: Split H264 into individual frame files
         std::ostringstream cmd;
         cmd << "python3 /workspace/generate_h264.py "
             << "-i '" << timestamped_h264_path << "' "
@@ -182,6 +182,35 @@ private:
 
         if (result == 0) {
             std::cout << "✅ H264 streaming files generated successfully" << std::endl;
+
+            // Step 2: Convert each file to have simple SEI timestamps for Flutter
+            std::cout << "🔄 Injecting simple SEI timestamps for Flutter compatibility..." << std::endl;
+
+            // Create a temporary directory for files with SEI
+            std::string output_dir_with_sei = output_dir + "_with_sei";
+            create_directories(output_dir_with_sei);
+
+            // Convert each H264 file to include simple SEI
+            std::ostringstream convert_cmd;
+            convert_cmd << "for file in " << output_dir << "/*.h264; do "
+                       << "filename=$(basename \"$file\"); "
+                       << "/workspace/convert_to_length_prefixed \"$file\" \""
+                       << output_dir_with_sei << "/$filename\" 2>/dev/null; "
+                       << "done";
+
+            int convert_result = system(convert_cmd.str().c_str());
+
+            if (convert_result == 0) {
+                // Move the converted files back to original directory
+                std::ostringstream move_cmd;
+                move_cmd << "rm -rf " << output_dir << " && mv " << output_dir_with_sei << " " << output_dir;
+                system(move_cmd.str().c_str());
+
+                std::cout << "✅ Simple SEI timestamps injected successfully" << std::endl;
+            } else {
+                std::cout << "⚠️  SEI injection failed, files may not have timestamps" << std::endl;
+            }
+
             return true;
         } else {
             std::cout << "❌ H264 streaming file generation failed (exit code: " << result << ")" << std::endl;
