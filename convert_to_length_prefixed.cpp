@@ -31,7 +31,7 @@ int main(int argc, char** argv) {
         std::cerr << "Failed to create output: " << output_path << std::endl;
         return 1;
     }
-
+    
     // Add a simple SEI timestamp at the beginning
     uint64_t test_timestamp = 1751959747173000; // Test timestamp in microseconds
     std::vector<uint8_t> sei_nal = SEIGenerator::createSimpleTimestampSEI(test_timestamp);

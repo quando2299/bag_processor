@@ -37,6 +37,10 @@ fi
 echo "✅ Found bag file: $BAG_FILE"
 echo "File size: $(du -h "$BAG_FILE" | cut -f1)"
 
+echo "Remove all old extracted image folders and h264 folder"
+rm -rf extracted_images_*
+rm -rf h264
+
 # The output directory will be created inside the container with timestamp
 echo "Output will be created in: $CURRENT_DIR/extracted_images_YYYYMMDD_HHMMSS"
 

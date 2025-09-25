@@ -57,9 +57,8 @@ RUN mkdir -p build && cd build && \
     cp ../rosbag_analyzed.cpp . && \
     cp ../sei_generator.h . && \
     cp ../sei_generator.cpp . && \
-    cp ../h264_timestamp_injector.cpp . && \
-    cp ../h264_timestamp_reader.cpp . && \
     cp ../convert_to_length_prefixed.cpp . && \
+    cp ../inject_real_timestamps_to_h264.cpp . && \
     cmake . \
         -DCMAKE_CXX_STANDARD=14 \
         -DCMAKE_CXX_FLAGS='-pthread -std=c++14' \
@@ -68,9 +67,10 @@ RUN mkdir -p build && cd build && \
         -DBoost_USE_MULTITHREADED=ON && \
     make VERBOSE=1"
 
-# Build the convert_to_length_prefixed tool
+# Build the timestamp injection tools
 RUN cd /workspace && \
-    g++ -std=c++14 convert_to_length_prefixed.cpp sei_generator.cpp -o convert_to_length_prefixed
+    g++ -std=c++14 convert_to_length_prefixed.cpp sei_generator.cpp -o convert_to_length_prefixed && \
+    g++ -std=c++14 inject_real_timestamps_to_h264.cpp sei_generator.cpp -lboost_filesystem -lboost_system -o inject_real_timestamps_to_h264
 
 # Set entrypoint
 WORKDIR /workspace/build

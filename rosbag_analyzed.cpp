@@ -82,18 +82,16 @@ private:
 
             // Now inject timestamps into the H264 stream
             std::string h264_timestamped_path = output_video_path + ".timestamped.h264";
-            std::cout << "💉 Injecting timestamps into H264 stream..." << std::endl;
+            // Skip old timestamp injection - we'll inject real timestamps later
+            std::cout << "⏭️  Skipping intermediate timestamp injection (will inject real timestamps later)" << std::endl;
 
-            std::ostringstream inject_cmd;
-            inject_cmd << "./h264_timestamp_injector "
-                      << "'" << h264_raw_path << "' "
-                      << "'" << h264_timestamped_path << "' "
-                      << "'" << images_dir << "'";
-
-            int inject_result = system(inject_cmd.str().c_str());
+            // Just copy the raw H264 to timestamped path for now
+            std::ostringstream copy_cmd;
+            copy_cmd << "cp '" << h264_raw_path << "' '" << h264_timestamped_path << "'";
+            int inject_result = system(copy_cmd.str().c_str());
 
             if (inject_result == 0) {
-                std::cout << "✅ Timestamp injection successful: " << h264_timestamped_path << std::endl;
+                std::cout << "✅ H264 file prepared for timestamp injection: " << h264_timestamped_path << std::endl;
 
                 // Package the timestamped H264 stream into MP4 container
                 std::ostringstream package_cmd;
@@ -183,33 +181,9 @@ private:
         if (result == 0) {
             std::cout << "✅ H264 streaming files generated successfully" << std::endl;
 
-            // Step 2: Convert each file to have simple SEI timestamps for Flutter
-            std::cout << "🔄 Injecting simple SEI timestamps for Flutter compatibility..." << std::endl;
-
-            // Create a temporary directory for files with SEI
-            std::string output_dir_with_sei = output_dir + "_with_sei";
-            create_directories(output_dir_with_sei);
-
-            // Convert each H264 file to include simple SEI
-            std::ostringstream convert_cmd;
-            convert_cmd << "for file in " << output_dir << "/*.h264; do "
-                       << "filename=$(basename \"$file\"); "
-                       << "/workspace/convert_to_length_prefixed \"$file\" \""
-                       << output_dir_with_sei << "/$filename\" 2>/dev/null; "
-                       << "done";
-
-            int convert_result = system(convert_cmd.str().c_str());
-
-            if (convert_result == 0) {
-                // Move the converted files back to original directory
-                std::ostringstream move_cmd;
-                move_cmd << "rm -rf " << output_dir << " && mv " << output_dir_with_sei << " " << output_dir;
-                system(move_cmd.str().c_str());
-
-                std::cout << "✅ Simple SEI timestamps injected successfully" << std::endl;
-            } else {
-                std::cout << "⚠️  SEI injection failed, files may not have timestamps" << std::endl;
-            }
+            // Skip automatic timestamp injection - will be done manually after Docker
+            std::cout << "INFO: H264 files generated without SEI timestamps" << std::endl;
+            std::cout << "INFO: Use fix_sei_for_flutter.sh script after copying files to backend" << std::endl;
 
             return true;
         } else {

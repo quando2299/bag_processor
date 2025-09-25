@@ -31,17 +31,7 @@ include_directories(
 # Add executable with ROS support
 add_executable(rosbag_analyzed rosbag_analyzed.cpp)
 
-# Add H264 timestamp injector executable
-add_executable(h264_timestamp_injector
-    h264_timestamp_injector.cpp
-    sei_generator.cpp
-)
-
-# Add H264 timestamp reader executable
-add_executable(h264_timestamp_reader
-    h264_timestamp_reader.cpp
-    sei_generator.cpp
-)
+# These tools are not needed for Docker build - removed to fix build errors
 
 # Link ROS libraries
 target_link_libraries(rosbag_analyzed
@@ -51,17 +41,7 @@ target_link_libraries(rosbag_analyzed
     Threads::Threads
 )
 
-# Link libraries for timestamp injector
-target_link_libraries(h264_timestamp_injector
-    ${Boost_LIBRARIES}
-    Threads::Threads
-)
-
-# Link libraries for timestamp reader
-target_link_libraries(h264_timestamp_reader
-    ${Boost_LIBRARIES}
-    Threads::Threads
-)
+# Removed link targets for deleted executables
 
 # Define ROS compilation flag
 target_compile_definitions(rosbag_analyzed PRIVATE HAVE_ROS=1)
