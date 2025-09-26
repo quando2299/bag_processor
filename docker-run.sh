@@ -40,6 +40,7 @@ echo "File size: $(du -h "$BAG_FILE" | cut -f1)"
 echo "Remove all old extracted image folders and h264 folder"
 rm -rf extracted_images_*
 rm -rf h264
+rm -rf h264_with_sei
 
 # The output directory will be created inside the container with timestamp
 echo "Output will be created in: $CURRENT_DIR/extracted_images_YYYYMMDD_HHMMSS"
@@ -105,6 +106,20 @@ if [ $? -eq 0 ]; then
         
         echo ""
         echo "🎉 H264 processing complete!"
+
+        # Run SEI injection script to add real timestamps
+        echo ""
+        echo "🔧 Injecting SEI timestamps into H264 files..."
+        ./inject_sei.sh
+
+        if [ $? -eq 0 ]; then
+            # Remove original h264 folder and rename h264_with_sei to h264
+            rm -rf h264
+            mv h264_with_sei h264
+        else
+            echo "❌ SEI timestamp injection failed!"
+        fi
+        
     else
         echo "Timestamped directory not found in $CURRENT_DIR"
         ls -la "$CURRENT_DIR"/extracted_images_* 2>/dev/null || echo "No extracted_images_* directories found"

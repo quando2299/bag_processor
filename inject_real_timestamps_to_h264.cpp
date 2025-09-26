@@ -6,10 +6,39 @@
 #include <sstream>
 #include <iomanip>
 #include <algorithm>
-#include <boost/filesystem.hpp>
+#include <dirent.h>
+#include <sys/stat.h>
 #include "sei_generator.h"
 
-namespace fs = boost::filesystem;
+// Helper function to check if a string ends with a suffix
+bool endsWith(const std::string& str, const std::string& suffix) {
+    if (str.length() < suffix.length()) {
+        return false;
+    }
+    return str.compare(str.length() - suffix.length(), suffix.length(), suffix) == 0;
+}
+
+// Helper function to get filename from path
+std::string getFilename(const std::string& path) {
+    size_t pos = path.find_last_of("/\\");
+    if (pos != std::string::npos) {
+        return path.substr(pos + 1);
+    }
+    return path;
+}
+
+// Helper function to create directories recursively
+void createDirectories(const std::string& path) {
+    size_t pos = 0;
+    while ((pos = path.find('/', pos)) != std::string::npos) {
+        std::string dir = path.substr(0, pos);
+        if (!dir.empty()) {
+            mkdir(dir.c_str(), 0755);
+        }
+        pos++;
+    }
+    mkdir(path.c_str(), 0755);
+}
 
 // Extract timestamp from JPG filename like "image_0123_1751959747.173.jpg"
 uint64_t extractTimestampFromJpgFilename(const std::string& filename) {
@@ -66,25 +95,34 @@ int main(int argc, char** argv) {
     std::string h264_output_dir = argv[3];
 
     // Create output directory
-    fs::create_directories(h264_output_dir);
+    createDirectories(h264_output_dir);
 
     // Step 1: Extract timestamps from JPG files
     std::map<int, uint64_t> frame_timestamps; // frame_number -> timestamp_us
 
     std::cout << "Extracting timestamps from JPG files..." << std::endl;
 
-    for (fs::directory_iterator iter(images_dir); iter != fs::directory_iterator(); ++iter) {
-        if (iter->path().extension() == ".jpg") {
-            std::string filename = iter->path().filename().string();
+    // Use POSIX directory reading
+    DIR* dir = opendir(images_dir.c_str());
+    if (dir == nullptr) {
+        std::cerr << "Failed to open images directory: " << images_dir << std::endl;
+        return 1;
+    }
+
+    struct dirent* entry;
+    while ((entry = readdir(dir)) != nullptr) {
+        std::string filename = entry->d_name;
+        if (endsWith(filename, ".jpg")) {
             int frame_number = extractFrameNumberFromJpg(filename);
             uint64_t timestamp = extractTimestampFromJpgFilename(filename);
 
             if (frame_number >= 0 && timestamp > 0) {
                 frame_timestamps[frame_number] = timestamp;
-                std::cout << "  Frame " << frame_number << " -> " << timestamp << " us" << std::endl;
+                // std::cout << "  Frame " << frame_number << " -> " << timestamp << " us" << std::endl;
             }
         }
     }
+    closedir(dir);
 
     std::cout << "Found " << frame_timestamps.size() << " timestamped frames" << std::endl;
 
@@ -92,13 +130,18 @@ int main(int argc, char** argv) {
     std::cout << "Processing H264 files and injecting real timestamps..." << std::endl;
 
     int processed_count = 0;
-    int h264_frame_index = 0;
 
     // Process sample-0.h264, sample-1.h264, etc.
-    for (fs::directory_iterator entry(h264_input_dir); entry != fs::directory_iterator(); ++entry) {
-        if (entry->path().extension() == ".h264") {
-            std::string input_file = entry->path().string();
-            std::string filename = entry->path().filename().string();
+    dir = opendir(h264_input_dir.c_str());
+    if (dir == nullptr) {
+        std::cerr << "Failed to open H264 input directory: " << h264_input_dir << std::endl;
+        return 1;
+    }
+
+    while ((entry = readdir(dir)) != nullptr) {
+        std::string filename = entry->d_name;
+        if (endsWith(filename, ".h264")) {
+            std::string input_file = h264_input_dir + "/" + filename;
 
             // Extract sample number from "sample-123.h264"
             size_t dash_pos = filename.find('-');
@@ -110,8 +153,6 @@ int main(int argc, char** argv) {
                 auto timestamp_it = frame_timestamps.find(sample_number);
                 if (timestamp_it != frame_timestamps.end()) {
                     uint64_t real_timestamp = timestamp_it->second;
-
-                    // std::cout << "  Processing " << filename << " with timestamp " << real_timestamp << " us" << std::endl;
 
                     // Read input H264 file
                     std::ifstream input(input_file, std::ios::binary | std::ios::ate);
@@ -177,6 +218,7 @@ int main(int argc, char** argv) {
             }
         }
     }
+    closedir(dir);
 
     std::cout << "Output directory: " << h264_output_dir << std::endl;
 
