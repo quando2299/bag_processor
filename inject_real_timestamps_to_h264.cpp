@@ -6,8 +6,10 @@
 #include <sstream>
 #include <iomanip>
 #include <algorithm>
-#include <filesystem>
+#include <boost/filesystem.hpp>
 #include "sei_generator.h"
+
+namespace fs = boost::filesystem;
 
 // Extract timestamp from JPG filename like "image_0123_1751959747.173.jpg"
 uint64_t extractTimestampFromJpgFilename(const std::string& filename) {
@@ -64,16 +66,16 @@ int main(int argc, char** argv) {
     std::string h264_output_dir = argv[3];
 
     // Create output directory
-    std::filesystem::create_directories(h264_output_dir);
+    fs::create_directories(h264_output_dir);
 
     // Step 1: Extract timestamps from JPG files
     std::map<int, uint64_t> frame_timestamps; // frame_number -> timestamp_us
 
     std::cout << "Extracting timestamps from JPG files..." << std::endl;
 
-    for (auto& file : std::filesystem::directory_iterator(images_dir)) {
-        if (file.path().extension() == ".jpg") {
-            std::string filename = file.path().filename().string();
+    for (fs::directory_iterator iter(images_dir); iter != fs::directory_iterator(); ++iter) {
+        if (iter->path().extension() == ".jpg") {
+            std::string filename = iter->path().filename().string();
             int frame_number = extractFrameNumberFromJpg(filename);
             uint64_t timestamp = extractTimestampFromJpgFilename(filename);
 
@@ -93,10 +95,10 @@ int main(int argc, char** argv) {
     int h264_frame_index = 0;
 
     // Process sample-0.h264, sample-1.h264, etc.
-    for (auto& entry : std::filesystem::directory_iterator(h264_input_dir)) {
-        if (entry.path().extension() == ".h264") {
-            std::string input_file = entry.path().string();
-            std::string filename = entry.path().filename().string();
+    for (fs::directory_iterator entry(h264_input_dir); entry != fs::directory_iterator(); ++entry) {
+        if (entry->path().extension() == ".h264") {
+            std::string input_file = entry->path().string();
+            std::string filename = entry->path().filename().string();
 
             // Extract sample number from "sample-123.h264"
             size_t dash_pos = filename.find('-');
